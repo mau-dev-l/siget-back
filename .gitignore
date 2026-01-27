@@ -2,3 +2,8 @@
 .env
 
 __pycache__/
+
+venv/
+# Ignorar archivos de sistema o IDEs
+.DS_Store
+.vscode/

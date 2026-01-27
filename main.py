@@ -1,16 +1,9 @@
-import sys
-import asyncio
 import json
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from database import database
-
-# ==========================================
-# 🚑 FIX WINDOWS (Evita desconexiones)
-# ==========================================
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+# Importamos las nuevas funciones del database.py
+from database import execute_read_query, execute_read_one, execute_write_query, pg_pool
 
 app = FastAPI(title="API OVIE Tuxtla 2026")
 
@@ -31,9 +24,17 @@ class ZonaCreate(BaseModel):
 # --- UTILERÍA ---
 def rows_to_geojson(rows, geom_col="geom"):
     features = []
+    # Como usamos RealDictCursor en database.py, 'row' se comporta igual que antes
     for row in rows:
-        row_dict = dict(row)
-        geometry = json.loads(row_dict.pop(geom_col))
+        row_dict = dict(row) 
+        # Convertir GeoJSON string a dict si viene como string desde la BD
+        if geom_col in row_dict and isinstance(row_dict[geom_col], str):
+            geometry = json.loads(row_dict.pop(geom_col))
+        elif geom_col in row_dict:
+            geometry = row_dict.pop(geom_col)
+        else:
+            geometry = None
+
         features.append({
             "type": "Feature",
             "geometry": geometry,
@@ -44,25 +45,32 @@ def rows_to_geojson(rows, geom_col="geom"):
 
 # --- EVENTOS ---
 @app.on_event("startup")
-async def startup():
-    await database.connect()
-    print("✅ Conectado a PostgreSQL Remoto (Modo Selector Windows)")
+def startup():
+    # El pool ya se crea al importar database, pero verificamos
+    if pg_pool:
+        print("✅ Sistema iniciado con Pool PostgreSQL (Psycopg2)")
 
 @app.on_event("shutdown")
-async def shutdown():
-    await database.disconnect()
+def shutdown():
+    if pg_pool:
+        pg_pool.closeall()
+        print("🔒 Conexiones a BD cerradas")
 
 # ================= RUTAS DEL SISTEMA =================
+# NOTA: Cambiamos 'async def' a 'def' para que FastAPI maneje 
+# las consultas bloqueantes de psycopg2 en un hilo separado.
 
 # 1. INFO AL CLIC
 @app.get("/info-manzana/")
-async def obtener_info_manzana(lat: float, lon: float):
+def obtener_info_manzana(lat: float, lon: float):
     query = """
         SELECT cvegeo, pobtot, vivtot, pobfem, pobmas 
         FROM cpyv_2020 
-        WHERE ST_Contains(wkb_geometry, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326))
+        WHERE ST_Contains(wkb_geometry, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326))
     """
-    resultado = await database.fetch_one(query=query, values={"lat": lat, "lon": lon})
+    # Nota el cambio de :lon a %(lon)s para psycopg2
+    resultado = execute_read_one(query=query, params={"lat": lat, "lon": lon})
+    
     if not resultado: return {"mensaje": "Sin datos"}
     return {
         "clave_geo": resultado["cvegeo"],
@@ -74,7 +82,7 @@ async def obtener_info_manzana(lat: float, lon: float):
 
 # 2. BUSCADOR DE COLONIAS
 @app.get("/colonias/")
-async def get_colonias():
+def get_colonias():
     query = """
         SELECT "NOM_ASEN" as nom_asen, 
                "POBTOT" as pobtot,
@@ -86,7 +94,7 @@ async def get_colonias():
         ORDER BY "NOM_ASEN" ASC
     """
     try:
-        rows = await database.fetch_all(query=query)
+        rows = execute_read_query(query=query)
         return rows_to_geojson(rows)
     except Exception as e:
         print(f"Error Colonias: {e}")
@@ -94,7 +102,7 @@ async def get_colonias():
 
 # 3. VIALIDADES
 @app.get("/vialidades/")
-async def get_vialidades(in_bbox: str = Query(None)):
+def get_vialidades(in_bbox: str = Query(None)):
     if not in_bbox: return {"type": "FeatureCollection", "features": []}
     bbox = list(map(float, in_bbox.split(',')))
     
@@ -102,11 +110,11 @@ async def get_vialidades(in_bbox: str = Query(None)):
         SELECT "NOMVIAL" as nom_vial, 
                ST_AsGeoJSON(geom) as geom
         FROM "VIALIDADES_TUXTLA_UTM"
-        WHERE geom && ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)
+        WHERE geom && ST_MakeEnvelope(%(min_lon)s, %(min_lat)s, %(max_lon)s, %(max_lat)s, 4326)
         LIMIT 1000
     """
     try:
-        rows = await database.fetch_all(query=query, values={
+        rows = execute_read_query(query=query, params={
             "min_lon": bbox[0], "min_lat": bbox[1], 
             "max_lon": bbox[2], "max_lat": bbox[3]
         })
@@ -114,30 +122,28 @@ async def get_vialidades(in_bbox: str = Query(None)):
     except Exception as e:
         return {"type": "FeatureCollection", "features": []}
 
-# 4. NEGOCIOS (AQUÍ ESTABA EL FRENO DE MANO) 🛑 -> 🟢
+# 4. NEGOCIOS
 @app.get("/denue/")
-async def get_denue(in_bbox: str = Query(None)):
+def get_denue(in_bbox: str = Query(None)):
     if not in_bbox: return {"type": "FeatureCollection", "features": []}
     bbox = list(map(float, in_bbox.split(',')))
     
-    # HE SUBIDO EL LÍMITE DE 2000 A 50000 PARA TRAER TODO EL DENUE DE LA ZONA
     query = """
         SELECT id, nom_estab, codigo_act, nombre_act, 
                ST_AsGeoJSON(geom) as geom
         FROM denue_tuxtla_cb_2026 
-        WHERE geom && ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)
+        WHERE geom && ST_MakeEnvelope(%(min_lon)s, %(min_lat)s, %(max_lon)s, %(max_lat)s, 4326)
         LIMIT 50000
     """
-    rows = await database.fetch_all(query=query, values={
+    rows = execute_read_query(query=query, params={
         "min_lon": bbox[0], "min_lat": bbox[1], 
         "max_lon": bbox[2], "max_lat": bbox[3]
     })
     return rows_to_geojson(rows)
 
-# 5. DROPDOWN DE ZONAS (SOLO TEXTO PLANO)
+# 5. DROPDOWN DE ZONAS
 @app.get("/lista-centralidades/")
-async def get_lista_zonas():
-    # Solo pedimos CLAVE_2
+def get_lista_zonas():
     query = """
         SELECT DISTINCT "CLAVE_2" 
         FROM centralidad_barrial02 
@@ -145,15 +151,14 @@ async def get_lista_zonas():
         ORDER BY "CLAVE_2"
     """
     try:
-        rows = await database.fetch_all(query=query)
-        # Retornamos lista simple de strings
+        rows = execute_read_query(query=query)
         return [r["CLAVE_2"] for r in rows]
     except Exception as e:
         print(f"Error lista zonas: {e}")
         return []
 
 @app.get("/centralidades/")
-async def get_poligono_zona(clave_2: str):
+def get_poligono_zona(clave_2: str):
     query = """
         SELECT "NAME" as nombre, 
                "POBTOT" as pobtot,
@@ -162,14 +167,14 @@ async def get_poligono_zona(clave_2: str):
                "VIVTOT" as vivtot,
                ST_AsGeoJSON(geom) as geom 
         FROM centralidad_barrial02 
-        WHERE "CLAVE_2" = :clave
+        WHERE "CLAVE_2" = %(clave)s
     """
-    rows = await database.fetch_all(query=query, values={"clave": clave_2})
+    rows = execute_read_query(query=query, params={"clave": clave_2})
     return rows_to_geojson(rows)
 
 # 6. CENSO BBOX
 @app.get("/censo/")
-async def get_censo_bbox(in_bbox: str = Query(None)):
+def get_censo_bbox(in_bbox: str = Query(None)):
     if not in_bbox: return {"type": "FeatureCollection", "features": []}
     bbox = list(map(float, in_bbox.split(',')))
     
@@ -177,9 +182,9 @@ async def get_censo_bbox(in_bbox: str = Query(None)):
         SELECT cvegeo, pobtot, pobmas, pobfem, vivtot,
                ST_AsGeoJSON(wkb_geometry) as geom 
         FROM cpyv_2020
-        WHERE wkb_geometry && ST_MakeEnvelope(:min_lon, :min_lat, :max_lon, :max_lat, 4326)
+        WHERE wkb_geometry && ST_MakeEnvelope(%(min_lon)s, %(min_lat)s, %(max_lon)s, %(max_lat)s, 4326)
     """
-    rows = await database.fetch_all(query=query, values={
+    rows = execute_read_query(query=query, params={
         "min_lon": bbox[0], "min_lat": bbox[1], 
         "max_lon": bbox[2], "max_lat": bbox[3]
     })
@@ -187,24 +192,25 @@ async def get_censo_bbox(in_bbox: str = Query(None)):
 
 # 7. MIS ZONAS
 @app.get("/mis_zonas/")
-async def listar_mis_zonas():
+def listar_mis_zonas():
     query = "SELECT id, nombre, fecha_creacion, ST_AsGeoJSON(geom) as geom FROM mis_zonas ORDER BY id DESC"
-    rows = await database.fetch_all(query=query)
+    rows = execute_read_query(query=query)
     return rows_to_geojson(rows)
 
 @app.post("/mis_zonas/")
-async def guardar_zona(zona: ZonaCreate):
+def guardar_zona(zona: ZonaCreate):
     geom_json = json.dumps(zona.geom)
     query = """
         INSERT INTO mis_zonas (nombre, geom) 
-        VALUES (:nombre, ST_SetSRID(ST_GeomFromGeoJSON(:geom), 4326))
+        VALUES (%(nombre)s, ST_SetSRID(ST_GeomFromGeoJSON(%(geom)s), 4326))
         RETURNING id
     """
-    id_nueva = await database.execute(query=query, values={"nombre": zona.nombre, "geom": geom_json})
+    # execute_write_query se encarga del commit
+    id_nueva = execute_write_query(query=query, params={"nombre": zona.nombre, "geom": geom_json})
     return {"mensaje": "Zona guardada", "id": id_nueva}
 
 @app.delete("/mis_zonas/{id_zona}")
-async def eliminar_zona(id_zona: int):
-    query = "DELETE FROM mis_zonas WHERE id = :id"
-    await database.execute(query=query, values={"id": id_zona})
+def eliminar_zona(id_zona: int):
+    query = "DELETE FROM mis_zonas WHERE id = %(id)s"
+    execute_write_query(query=query, params={"id": id_zona})
     return {"mensaje": "Eliminada"}
