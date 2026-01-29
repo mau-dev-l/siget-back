@@ -5,7 +5,8 @@ from pydantic import BaseModel
 # Importamos las nuevas funciones del database.py
 from database import execute_read_query, execute_read_one, execute_write_query, pg_pool
 
-app = FastAPI(title="API OVIE Tuxtla 2026")
+app = FastAPI(title="API OVIE Tuxtla 2026", root_path="/api"
+)
 
 # --- CONFIGURACIÓN CORS ---
 app.add_middleware(
