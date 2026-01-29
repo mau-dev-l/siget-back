@@ -5,7 +5,7 @@ from pydantic import BaseModel
 # Importamos las nuevas funciones del database.py
 from database import execute_read_query, execute_read_one, execute_write_query, pg_pool
 
-app = FastAPI(title="API OVIE Tuxtla 2026")
+app = FastAPI(title="API OVIE Tuxtla 2026", root_path="/api")
 
 # --- CONFIGURACIÓN CORS ---
 app.add_middleware(
@@ -214,3 +214,12 @@ def eliminar_zona(id_zona: int):
     query = "DELETE FROM mis_zonas WHERE id = %(id)s"
     execute_write_query(query=query, params={"id": id_zona})
     return {"mensaje": "Eliminada"}
+
+@app.get("/capa-referencia-centralidades/")
+def get_todas_centralidades():
+    query = """
+        SELECT "CLAVE_2", ST_AsGeoJSON(geom) as geom 
+        FROM centralidad_barrial02
+    """
+    rows = execute_read_query(query=query)
+    return rows_to_geojson(rows)
