@@ -11,7 +11,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+#Tu primer commit en GitHub
 # Incluimos los módulos de rutas
 app.include_router(geografia.router)
 app.include_router(zonas.router)
@@ -25,3 +25,7 @@ def shutdown():
     if pg_pool:
         pg_pool.closeall()
         print("Conexiones cerradas")
+
+@app.get("/")
+def read_root():
+    return {"message": "Bienvenido a la API OVIE Tuxtla 2026"}
