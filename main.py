@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import geografia, zonas, visop_geo
+from routers.geografia import router as geografia_router
+from routers.zonas import router as zonas_router
+from routers.visop_geo import router as visop_router
 from db.connection import pg_pool
 
 app = FastAPI(title="API OVIE Tuxtla 2026", root_path="/api")
@@ -13,9 +15,9 @@ app.add_middleware(
 )
 #Tu primer commit en GitHub
 # Incluimos los módulos de rutas
-app.include_router(geografia.router)
-app.include_router(zonas.router)
-app.include_router(visop_geo.router)  # Asegúrate de importar este módulo correctamente
+app.include_router(geografia_router)
+app.include_router(zonas_router)
+app.include_router(visop_router)  # Asegúrate de importar este módulo correctamente
 
 @app.on_event("startup")
 def startup():
