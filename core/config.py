@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # Variables de la primera base de datos
     DB_HOST: str
-    DB_PORT: int
+    DB_PORT: str = "5432"
     DB_NAME: str
     
     # Variable para la segunda base de datos (VISOP)
