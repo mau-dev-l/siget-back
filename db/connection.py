@@ -13,10 +13,24 @@ try:
         password=settings.DB_PASSWORD,
         port=settings.DB_PORT
     )
-    print("✅ Pool de conexiones PostgreSQL listo.")
+    print(" Pool de conexiones PostgreSQL listo.")
 except Exception as e:
-    print(f"❌ Error creando el pool: {e}")
+    print(f" Error creando el pool: {e}")
     pg_pool = None
+try:
+    pg_pool2 = psycopg2.pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=20,
+        host=settings.DB_HOST,
+        database=settings.DB_NAME_2,
+        user=settings.DB_USER,
+        password=settings.DB_PASSWORD,
+        port=settings.DB_PORT
+    )
+    print(" Pool de conexiones PostgreSQL listo.")
+except Exception as e:
+    print(f" Error creando el pool: {e}")
+    pg_pool2 = None
 
 def get_db_connection():
     if not pg_pool: raise Exception("Pool no inicializado")
