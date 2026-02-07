@@ -1,20 +1,25 @@
-from pydantic_settings import BaseSettings
-from pathlib import Path
-#install pydantic-settings
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-# pydantic nos permite gestionar la configuración de la aplicación de manera sencilla y segura.
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
+    # Variables de la primera base de datos
     DB_HOST: str
     DB_PORT: int
     DB_NAME: str
-    DB_NAME_2: str
+    
+    # Variable para la segunda base de datos (VISOP)
+    DB_NAME_2: str 
+    
+    # Credenciales comunes
     DB_USER: str
     DB_PASSWORD: str
+    
+    # Opción de servidor
+    DEBUG: bool = False 
 
-    class Config:
-        env_file = ".env"
+    # Configuración del cargador
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        extra="ignore"  # <-- Esto evita el error de la imagen si hay variables extra
+    )
 
 settings = Settings()
