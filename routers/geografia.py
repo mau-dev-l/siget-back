@@ -103,15 +103,34 @@ def get_denue(in_bbox: str = Query(None)):
     if not in_bbox: 
         return {"type": "FeatureCollection", "features": []}
     
-    bbox = list(map(float, in_bbox.split(',')))
-    query = """
-        SELECT id, nom_estab, nombre_act, ST_AsGeoJSON(geom) as geom 
-        FROM denue_tuxtla_cb_2026 
-        WHERE geom && ST_MakeEnvelope(%(min_lon)s, %(min_lat)s, %(max_lon)s, %(max_lat)s, 4326) 
-        LIMIT 50000
-    """
-    params = {"min_lon": bbox[0], "min_lat": bbox[1], "max_lon": bbox[2], "max_lat": bbox[3]}
-    return rows_to_geojson(execute_read_query(query, params, use_pool2=False))
+    try:
+        # Convertimos el string del bbox a una lista de floats
+        bbox = list(map(float, in_bbox.split(',')))
+        
+        # 1. Ajustamos los placeholders de : a %(...)s para que funcione con execute_read_query
+        query = """
+            SELECT id, nom_estab, codigo_act, nombre_act, 
+                   ST_AsGeoJSON(geom) as geom
+            FROM denue_tuxtla_cb_2026 
+            WHERE geom && ST_MakeEnvelope(%(min_lon)s, %(min_lat)s, %(max_lon)s, %(max_lat)s, 4326)
+            LIMIT 50000
+        """
+        
+        params = {
+            "min_lon": bbox[0], "min_lat": bbox[1], 
+            "max_lon": bbox[2], "max_lat": bbox[3]
+        }
+        
+        # 2. Usamos tu función segura que ya gestiona el pool de conexiones
+        rows = execute_read_query(query, params, use_pool2=False)
+        
+        # 3. Procesamos con tu servicio de transformación a GeoJSON
+        return rows_to_geojson(rows)
+
+    except Exception as e:
+        # Registro de error en los logs de CentOS 7
+        print(f"ERROR CRÍTICO EN DENUE: {str(e)}")
+        return {"type": "FeatureCollection", "features": [], "error": str(e)}
 
 @router.get("/mis_zonas/")
 def listar_mis_zonas():
