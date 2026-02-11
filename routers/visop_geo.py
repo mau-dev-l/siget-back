@@ -1,71 +1,47 @@
 from fastapi import APIRouter, HTTPException
 import json
 from schemas.zonas import ObraNueva
-# Importamos también la función de liberación
-from db.connection import pg_pool2, release_db_connection 
+from db.connection import execute_read_query, execute_write_query # Usamos las funciones de ayuda
 
 router = APIRouter(prefix="/visop", tags=["Capas Geográficas"])
 
 @router.get("/estadisticas/obras")
 def get_estadisticas():
-    resultados = {"anio_2025": [], "anio_2024": [], "anio_2023": []}
+    # Definimos las consultas para cada año
+    queries = {
+        "anio_2025": "SELECT tipo_proy, COUNT(*) FROM faismun_2025 GROUP BY tipo_proy ORDER BY COUNT(*) DESC;",
+        "anio_2024": "SELECT tipo, COUNT(*) FROM faismun_2024_geo GROUP BY tipo ORDER BY COUNT(*) DESC;",
+        "anio_2023": "SELECT tipo, COUNT(*) FROM faismun_2023_geo GROUP BY tipo ORDER BY COUNT(*) DESC;"
+    }
     
-    # 1. Obtenemos la conexión
-    conn = pg_pool2.getconn()
-    try:
-        # 2. Usamos 'with' para el cursor (esto sí cierra el cursor automáticamente)
-        with conn.cursor() as cur:
-            # --- 2025 ---
-            try:
-                cur.execute("SELECT tipo_proy, COUNT(*) as total FROM faismun_2025 GROUP BY tipo_proy ORDER BY total DESC;")
-                resultados["anio_2025"] = [{"label": row[0] or "Sin Clasificar", "value": row[1]} for row in cur.fetchall()]
-            except Exception as e:
-                print(f"Error Stats 2025: {e}")
-                conn.rollback()
-
-            # --- 2024 ---
-            try:
-                cur.execute("SELECT tipo, COUNT(*) as total FROM faismun_2024_geo GROUP BY tipo ORDER BY total DESC;")
-                resultados["anio_2024"] = [{"label": row[0] or "Sin Clasificar", "value": row[1]} for row in cur.fetchall()]
-            except Exception as e:
-                print(f"Error Stats 2024: {e}")
-                conn.rollback()
-            
-            # --- 2023 ---
-            try:
-                cur.execute("SELECT tipo, COUNT(*) as total FROM faismun_2023_geo GROUP BY tipo ORDER BY total DESC;")
-                resultados["anio_2023"] = [{"label": row[0] or "Sin Clasificar", "value": row[1]} for row in cur.fetchall()]
-            except Exception as e:
-                print(f"Error Stats 2023: {e}")
-                conn.rollback()
-
-        return resultados
-    except Exception as e:
-        print(f" Error General Stats: {e}")
-        return {"anio_2025": [], "anio_2024": [], "anio_2023": []}
-    finally:
-        # 3. ¡ESTO ES LO MÁS IMPORTANTE! Devolver la conexión al pool
-        release_db_connection(conn)
+    resultados = {}
+    
+    for anio, sql in queries.items():
+        # IMPORTANTE: use_pool2=True asegura que use la base de VISOP y libere bien la conexión
+        rows = execute_read_query(sql, use_pool2=True)
+        # Formateamos los datos para el frontend
+        resultados[anio] = [{"label": r[0] or "Sin Clasificar", "value": r[1]} for r in rows]
+        
+    return resultados
 
 @router.post("/obras/crear")
 def crear_obra(obra: ObraNueva):
     sql = """
     INSERT INTO faismun_2024_geo (obra_accio, no_aprobac, colonia, geom)
-    VALUES (%s, %s, %s, ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326))
+    VALUES (%(nombre)s, %(num)s, %(col)s, ST_SetSRID(ST_GeomFromGeoJSON(%(geom)s), 4326))
     RETURNING id;
     """
-    conn = pg_pool2.getconn()
+    
+    params = {
+        "nombre": obra.nombre_obra,
+        "num": obra.num_aprobacion,
+        "col": obra.colonia,
+        "geom": json.dumps(obra.geometry)
+    }
+    
     try:
-        geojson_str = json.dumps(obra.geometry)
-        with conn.cursor() as cur:
-            cur.execute(sql, (obra.nombre_obra, obra.num_aprobacion, obra.colonia, geojson_str))
-            nuevo_id = cur.fetchone()[0]
-            conn.commit() # Aseguramos el guardado
+        # execute_write_query ya maneja el commit, el rollback y la liberación del pool
+        nuevo_id = execute_write_query(sql, params, use_pool2=True)
         return {"status": "ok", "id": nuevo_id, "mensaje": "Obra registrada correctamente"}
     except Exception as e:
-        conn.rollback()
-        print(f" Error insertando en BD: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Liberamos conexión
-        release_db_connection(conn)
+        raise HTTPException(status_code=500, detail=f"Error al guardar: {str(e)}")
