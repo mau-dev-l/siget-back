@@ -52,9 +52,7 @@ def get_denue(in_bbox: str = Query(None)):
     return rows_to_geojson(execute_read_query(query, {"min_lon": bbox[0], "min_lat": bbox[1], "max_lon": bbox[2], "max_lat": bbox[3]}))
 
 
-@router.post("/mis_zonas/")
-def guardar_zona(zona: ZonaCreate):
-    geom_json = json.dumps(zona.geom)
-    query = """INSERT INTO mis_zonas (nombre, geom) VALUES (%(nombre)s, ST_SetSRID(ST_GeomFromGeoJSON(%(geom)s), 4326)) RETURNING id"""
-    id_nueva = execute_write_query(query, {"nombre": zona.nombre, "geom": geom_json})
-    return {"mensaje": "Zona guardada", "id": id_nueva}
+@router.get("/mis_zonas/")
+def listar_mis_zonas():
+    query = "SELECT id, nombre, ST_AsGeoJSON(geom) as geom FROM mis_zonas"
+    return rows_to_geojson(execute_read_query(query))
