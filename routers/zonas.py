@@ -17,13 +17,5 @@ def get_capa_referencia(clave: str):
     rows = execute_read_query(query, {"clave": clave})
     return rows_to_geojson(rows)
 
-# --- GUARDAR MI ZONA ---
-@router.post("/mis_zonas/")
-def guardar_zona(zona: ZonaCreate):
-    geom_json = json.dumps(zona.geom)
-    query = """INSERT INTO mis_zonas (nombre, geom) 
-               VALUES (%(nombre)s, ST_SetSRID(ST_GeomFromGeoJSON(%(geom)s), 4326)) 
-               RETURNING id"""
-    id_nueva = execute_write_query(query, {"nombre": zona.nombre, "geom": geom_json})
-    return {"mensaje": "Zona guardada", "id": id_nueva}
+
 # ... (Aquí agregarías el resto de DELETE y GET de zonas)

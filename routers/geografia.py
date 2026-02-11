@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Query
-from db.connection import execute_read_query, execute_read_one
+import json
+from db.connection import execute_read_query, execute_read_one, execute_write_query
+from schemas.zonas import ZonaCreate
 from services.geo_utils import rows_to_geojson
 
 router = APIRouter(tags=["Geografía y Censo"])
@@ -48,3 +50,11 @@ def get_denue(in_bbox: str = Query(None)):
     query = """SELECT id, nom_estab, nombre_act, ST_AsGeoJSON(geom) as geom FROM denue_tuxtla_cb_2026 
                WHERE geom && ST_MakeEnvelope(%(min_lon)s, %(min_lat)s, %(max_lon)s, %(max_lat)s, 4326) LIMIT 50000"""
     return rows_to_geojson(execute_read_query(query, {"min_lon": bbox[0], "min_lat": bbox[1], "max_lon": bbox[2], "max_lat": bbox[3]}))
+
+
+@router.post("/mis_zonas/")
+def guardar_zona(zona: ZonaCreate):
+    geom_json = json.dumps(zona.geom)
+    query = """INSERT INTO mis_zonas (nombre, geom) VALUES (%(nombre)s, ST_SetSRID(ST_GeomFromGeoJSON(%(geom)s), 4326)) RETURNING id"""
+    id_nueva = execute_write_query(query, {"nombre": zona.nombre, "geom": geom_json})
+    return {"mensaje": "Zona guardada", "id": id_nueva}
