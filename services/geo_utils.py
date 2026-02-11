@@ -3,19 +3,22 @@ import json
 def rows_to_geojson(rows, geom_col="geom"):
     features = []
     for row in rows:
-        row_dict = dict(row) 
-        if geom_col in row_dict and isinstance(row_dict[geom_col], str):
-            geometry = json.loads(row_dict.pop(geom_col))
-        elif geom_col in row_dict:
-            geometry = row_dict.pop(geom_col)
+        # row ya es un dict gracias al RealDictCursor
+        if geom_col in row:
+            geom_raw = row.pop(geom_col)
+            try:
+                # Si viene de ST_AsGeoJSON en el SQL, es un string
+                geometry = json.loads(geom_raw) if isinstance(geom_raw, str) else geom_raw
+            except:
+                geometry = None
         else:
             geometry = None
 
         features.append({
             "type": "Feature",
             "geometry": geometry,
-            "properties": row_dict,
-            "id": row_dict.get("id") or row_dict.get("gid")
+            "properties": row,
+            "id": row.get("id") or row.get("gid")
         })
     return {"type": "FeatureCollection", "features": features}
 
