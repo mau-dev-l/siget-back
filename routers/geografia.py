@@ -6,6 +6,28 @@ from services.geo_utils import rows_to_geojson
 
 router = APIRouter(tags=["Geografía y Censo"])
 
+@router.get("/centralidades/")
+def buscar_centralidad(clave: str = None):
+    # Si no hay clave, devolvemos colección vacía para evitar errores en el mapa
+    if not clave:
+        return {"type": "FeatureCollection", "features": []}
+    
+    # Buscamos la geometría específica por la columna CLAVE_2
+    query = """
+        SELECT "CLAVE_2", ST_AsGeoJSON(geom) as geom 
+        FROM centralidad_barrial02 
+        WHERE "CLAVE_2" = %(clave)s
+    """
+    
+    # execute_read_query ya gestiona la conexión de forma segura
+    rows = execute_read_query(query, {"clave": clave})
+    
+    if not rows:
+        return {"type": "FeatureCollection", "features": [], "mensaje": "No se encontró la centralidad"}
+        
+    return rows_to_geojson(rows)
+
+
 @router.get("/lista-centralidades/")
 def get_lista_zonas():
     query = 'SELECT DISTINCT "CLAVE_2" FROM centralidad_barrial02 WHERE "CLAVE_2" IS NOT NULL ORDER BY "CLAVE_2"'
