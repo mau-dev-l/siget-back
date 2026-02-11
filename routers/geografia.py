@@ -38,14 +38,16 @@ def get_censo_bbox(in_bbox: str = Query(None)):
 @router.get("/centralidades/")
 def get_poligono_zona(clave_2: str):
     query = """
-        SELECT "NAME" as nombre, "POBTOT" as pobtot, "VIVTOT" as vivtot,
-               "POBFEM" as pobfem, "POBMAS" as pobmas,
+        SELECT "NAME" as nombre, 
+               "POBTOT" as pobtot, 
+               "VIVTOT" as vivtot,
+               "POBFEM" as pobfem, 
+               "POBMAS" as pobmas,
                ST_AsGeoJSON(geom) as geom 
         FROM centralidad_barrial02 
         WHERE "CLAVE_2" = %(clave)s
     """
-    # El nombre de la llave en el dict debe coincidir con %(clave)s
-    rows = execute_read_query(query, {"clave": clave_2}) 
+    rows = execute_read_query(query, {"clave": clave_2})
     return rows_to_geojson(rows)
 
 
