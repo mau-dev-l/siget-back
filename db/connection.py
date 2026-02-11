@@ -4,8 +4,9 @@ from psycopg2.extras import RealDictCursor
 from core.config import settings
 
 # --- CONFIGURACIÓN DE LOS POOLS ---
-# Aumentamos maxconn a 40 para soportar más workers
+# Aumentamos la capacidad para soportar múltiples peticiones simultáneas
 try:
+    # Pool 1: Base de datos General (Censo, DENUE, Geografía)
     pg_pool = psycopg2.pool.ThreadedConnectionPool(
         minconn=1,
         maxconn=40,
@@ -16,6 +17,7 @@ try:
         port=settings.DB_PORT
     )
     
+    # Pool 2: Base de datos VISOP (Obras, Faismun)
     pg_pool2 = psycopg2.pool.ThreadedConnectionPool(
         minconn=1,
         maxconn=40,
@@ -25,65 +27,71 @@ try:
         password=settings.DB_PASSWORD,
         port=settings.DB_PORT
     )
-    print("✅ Pools de conexiones (1 y 2) listos con mayor capacidad.")
+    print("✅ Pools de conexiones (1 y 2) listos con capacidad de 40 c/u.")
 except Exception as e:
     print(f"❌ Error creando los pools: {e}")
     pg_pool = None
     pg_pool2 = None
 
-def get_db_connection():
-    if not pg_pool: raise Exception("Pool 1 no inicializado")
-    return pg_pool.getconn()
+# --- FUNCIONES DE GESTIÓN DE CONEXIÓN ---
 
-def get_db_connection2():
-    if not pg_pool2: raise Exception("Pool 2 no inicializado")
-    return pg_pool2.getconn()
+def get_db_connection(use_pool2: bool = False):
+    """Obtiene una conexión del Pool 1 o del Pool 2 según se requiera."""
+    target_pool = pg_pool2 if use_pool2 else pg_pool
+    if not target_pool:
+        raise Exception(f"Pool {'2 (VISOP)' if use_pool2 else '1 (General)'} no está inicializado.")
+    return target_pool.getconn()
 
-def release_db_connection(conn):
-    if pg_pool and conn:
-        # El pool de psycopg2 es inteligente: sabe si la conexión 
-        # pertenece al pool 1 o al pool 2 al intentar devolverla.
-        try:
-            pg_pool.putconn(conn)
-        except:
-            pg_pool2.putconn(conn)
+def release_db_connection(conn, use_pool2: bool = False):
+    """Devuelve la conexión al pool correspondiente."""
+    target_pool = pg_pool2 if use_pool2 else pg_pool
+    if target_pool and conn:
+        target_pool.putconn(conn)
 
-def execute_read_query(query: str, params: dict = None):
-    conn = get_db_connection()
+# --- FUNCIONES DE EJECUCIÓN (READ/WRITE) ---
+
+def execute_read_query(query: str, params: dict = None, use_pool2: bool = False):
+    """Ejecuta un SELECT y devuelve una lista de diccionarios."""
+    conn = get_db_connection(use_pool2)
     try:
-        # Usar 'with' asegura que el cursor se cierre automáticamente
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(query, params or {})
             return cursor.fetchall()
     except Exception as e:
-        print(f"Error en query: {e}")
-        raise e
+        print(f"Error SQL (Lectura): {e}")
+        return []
     finally:
-        release_db_connection(conn)
+        release_db_connection(conn, use_pool2)
 
-def execute_read_one(query: str, params: dict = None):
-    conn = get_db_connection()
+def execute_read_one(query: str, params: dict = None, use_pool2: bool = False):
+    """Ejecuta un SELECT y devuelve un solo resultado."""
+    conn = get_db_connection(use_pool2)
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(query, params or {})
             return cursor.fetchone()
+    except Exception as e:
+        print(f"Error SQL (Lectura Uno): {e}")
+        return None
     finally:
-        release_db_connection(conn)
+        release_db_connection(conn, use_pool2)
 
-def execute_write_query(query: str, params: dict = None):
-    conn = get_db_connection()
+def execute_write_query(query: str, params: dict = None, use_pool2: bool = False):
+    """Ejecuta INSERT, UPDATE o DELETE y maneja la transacción."""
+    conn = get_db_connection(use_pool2)
     try:
         with conn.cursor() as cursor:
             cursor.execute(query, params or {})
-            # Intentamos obtener el ID si es un INSERT ... RETURNING
+            # Si la consulta tiene RETURNING id, obtenemos el valor
             try:
                 result = cursor.fetchone()[0] if cursor.description else cursor.rowcount
             except:
                 result = cursor.rowcount
-            conn.commit() # Importante: commit antes de liberar
+            conn.commit()
             return result
     except Exception as e:
-        conn.rollback() # Si falla, rollback para limpiar la conexión
+        conn.rollback()
+        print(f"Error SQL (Escritura): {e}")
         raise e
     finally:
-        release_db_connection(conn)
+        release_db_connection(conn, use_pool2)

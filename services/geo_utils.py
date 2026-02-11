@@ -2,37 +2,37 @@ import json
 
 def rows_to_geojson(rows, geom_col="geom"):
     """
-    Convierte resultados de la BD a GeoJSON estándar.
-    Maneja casos donde no hay resultados para evitar errores en el Frontend.
+    Transforma filas de RealDictCursor a un estándar GeoJSON FeatureCollection.
     """
     if not rows:
         return {"type": "FeatureCollection", "features": []}
 
     features = []
     for row in rows:
-        # Ya que usamos RealDictCursor, 'row' ya es un diccionario
+        # Convertimos la fila a diccionario para manipularla
         row_dict = dict(row) 
         
-        try:
-            # 1. Extraer y parsear la geometría
-            geom_data = row_dict.pop(geom_col, None)
-            
-            if geom_data:
-                # Si viene de ST_AsGeoJSON es un string, si no, podría ser ya un dict
-                geometry = json.loads(geom_data) if isinstance(geom_data, str) else geom_data
+        # Procesamiento de la geometría
+        if geom_col in row_dict:
+            raw_geom = row_dict.pop(geom_col)
+            # Si viene de ST_AsGeoJSON (string), lo convertimos a objeto dict
+            if isinstance(raw_geom, str):
+                try:
+                    geometry = json.loads(raw_geom)
+                except:
+                    geometry = None
             else:
-                geometry = None
-                
-            # 2. Construir el Feature
-            features.append({
-                "type": "Feature",
-                "geometry": geometry,
-                "properties": row_dict,
-                "id": row_dict.get("id") or row_dict.get("gid") or row_dict.get("cvegeo")
-            })
-        except Exception as e:
-            print(f"Error parseando fila a GeoJSON: {e}")
-            continue
+                geometry = raw_geom
+        else:
+            geometry = None
+
+        features.append({
+            "type": "Feature",
+            "geometry": geometry,
+            "properties": row_dict,
+            # Priorizamos encontrar un ID único para la capa
+            "id": row_dict.get("id") or row_dict.get("gid") or row_dict.get("cvegeo")
+        })
 
     return {"type": "FeatureCollection", "features": features}
 

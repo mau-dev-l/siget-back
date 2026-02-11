@@ -19,8 +19,6 @@ def get_capa_referencia(clave: str = None): # Agregamos = None
     rows = execute_read_query(query, {"clave": clave})
     return rows_to_geojson(rows)
 
-# ... (Aquí agregarías el resto de DELETE y GET de zonas)
-# Para LISTAR (GET) - Añade este si no estab
 
 
 @router.post("/mis_zonas/")
