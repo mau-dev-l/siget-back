@@ -4,6 +4,12 @@ from services.geo_utils import rows_to_geojson
 
 router = APIRouter(tags=["Geografía y Censo"])
 
+@router.get("/lista-centralidades/")
+def get_lista_zonas():
+    query = 'SELECT DISTINCT "CLAVE_2" FROM centralidad_barrial02 WHERE "CLAVE_2" IS NOT NULL ORDER BY "CLAVE_2"'
+    rows = execute_read_query(query)
+    return [r["CLAVE_2"] for r in rows]
+
 @router.get("/info-manzana/")
 def obtener_info_manzana(lat: float, lon: float):
     query = """

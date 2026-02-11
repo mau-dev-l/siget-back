@@ -6,11 +6,7 @@ from services.geo_utils import rows_to_geojson
 
 router = APIRouter(prefix="/zonas", tags=["Zonas Personalizadas"])
 
-@router.get("/lista-centralidades/")
-def get_lista_zonas():
-    query = 'SELECT DISTINCT "CLAVE_2" FROM centralidad_barrial02 WHERE "CLAVE_2" IS NOT NULL ORDER BY "CLAVE_2"'
-    rows = execute_read_query(query)
-    return [r["CLAVE_2"] for r in rows]
+
 
 # --- OBTENER POLÍGONOS DE REFERENCIA ---
 @router.get("/capa-referencia-centralidades/")
