@@ -6,24 +6,56 @@ from services.geo_utils import rows_to_geojson
 
 router = APIRouter(tags=["Geografía y Censo"])
 
-@router.get("/centralidades/")
-def buscar_centralidad(clave: str = None):
-    # Si no hay clave, devolvemos colección vacía para evitar errores en el mapa
-    if not clave:
+@router.get("/censo/")
+def get_censo_bbox(in_bbox: str = Query(None)):
+    if not in_bbox: 
         return {"type": "FeatureCollection", "features": []}
     
-    # Buscamos la geometría específica por la columna CLAVE_2
+    try:
+        # Convertimos el string del bbox a una lista de floats
+        bbox = list(map(float, in_bbox.split(',')))
+        
+        query = """
+            SELECT cvegeo, pobtot, pobmas, pobfem, vivtot,
+                   ST_AsGeoJSON(wkb_geometry) as geom 
+            FROM cpyv_2020
+            WHERE wkb_geometry && ST_MakeEnvelope(%(min_lon)s, %(min_lat)s, %(max_lon)s, %(max_lat)s, 4326)
+        """
+        
+        params = {
+            "min_lon": bbox[0], "min_lat": bbox[1], 
+            "max_lon": bbox[2], "max_lat": bbox[3]
+        }
+        
+        # Usamos nuestra función segura que libera la conexión al terminar
+        rows = execute_read_query(query, params)
+        return rows_to_geojson(rows)
+        
+    except Exception as e:
+        print(f"Error en censo BBOX: {e}")
+        return {"type": "FeatureCollection", "features": [], "error": str(e)}
+    
+@router.get("/centralidades/")
+def get_poligono_zona(clave_2: str):
+    # Usamos execute_read_query para asegurar que la conexión regrese al pool
+    # y evitar el error "connection pool exhausted" que tenías antes
     query = """
-        SELECT "CLAVE_2", ST_AsGeoJSON(geom) as geom 
+        SELECT "NAME" as nombre, 
+               "POBTOT" as pobtot,
+               "POBMAS" as pobmas,
+               "POBFEM" as pobfem,
+               "VIVTOT" as vivtot,
+               ST_AsGeoJSON(geom) as geom 
         FROM centralidad_barrial02 
         WHERE "CLAVE_2" = %(clave)s
     """
     
-    # execute_read_query ya gestiona la conexión de forma segura
-    rows = execute_read_query(query, {"clave": clave})
+    # Pasamos los parámetros en el diccionario para mayor seguridad
+    rows = execute_read_query(query, {"clave": clave_2})
     
     if not rows:
-        return {"type": "FeatureCollection", "features": [], "mensaje": "No se encontró la centralidad"}
+        # Si no hay datos, devolvemos un GeoJSON vacío para que el JS no marque error de 'length'
+        return {"type": "FeatureCollection", "features": []}
         
     return rows_to_geojson(rows)
 
