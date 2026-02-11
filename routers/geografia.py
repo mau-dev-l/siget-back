@@ -37,24 +37,18 @@ def get_censo_bbox(in_bbox: str = Query(None)):
     
 @router.get("/centralidades/")
 def get_poligono_zona(clave_2: str):
-    # Usamos execute_read_query para asegurar que la conexión regrese al pool
-    # y evitar el error "connection pool exhausted" que tenías antes
+    # Usamos execute_read_query para mantener el pool sano y evitar el "exhausted"
     query = """
-        SELECT "NAME" as nombre, 
-               "POBTOT" as pobtot,
-               "POBMAS" as pobmas,
-               "POBFEM" as pobfem,
-               "VIVTOT" as vivtot,
+        SELECT "NAME" as nombre, "POBTOT" as pobtot, "VIVTOT" as vivtot,
                ST_AsGeoJSON(geom) as geom 
         FROM centralidad_barrial02 
         WHERE "CLAVE_2" = %(clave)s
     """
-    
-    # Pasamos los parámetros en el diccionario para mayor seguridad
     rows = execute_read_query(query, {"clave": clave_2})
     
+    # IMPORTANTE: Si no hay filas, devolvemos un GeoJSON vacío 
+    # para que el JS no lance el error de 'length'
     if not rows:
-        # Si no hay datos, devolvemos un GeoJSON vacío para que el JS no marque error de 'length'
         return {"type": "FeatureCollection", "features": []}
         
     return rows_to_geojson(rows)
