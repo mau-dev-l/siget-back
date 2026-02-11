@@ -8,14 +8,15 @@ router = APIRouter(prefix="/zonas", tags=["Zonas Personalizadas"])
 
 
 
-# --- OBTENER POLÍGONOS DE REFERENCIA ---
+
 @router.get("/capa-referencia-centralidades/")
-def get_capa_referencia(clave: str):
+def get_capa_referencia(clave: str = None): # Agregamos = None
+    if not clave:
+        return {"type": "FeatureCollection", "features": []}
     query = """SELECT "CLAVE_2", ST_AsGeoJSON(geom) as geom 
                FROM centralidad_barrial02 
                WHERE "CLAVE_2" = %(clave)s"""
     rows = execute_read_query(query, {"clave": clave})
     return rows_to_geojson(rows)
-
 
 # ... (Aquí agregarías el resto de DELETE y GET de zonas)
