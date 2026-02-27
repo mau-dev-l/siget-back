@@ -1,5 +1,5 @@
-from passlib.context import CryptContext #pip install passlib[bcrypt]
-import jwt #pip install PyJWT
+from passlib.context import CryptContext
+import jwt #pip insta
 from datetime import datetime, timedelta
 
 SECRET_KEY = "super_secret_key"
