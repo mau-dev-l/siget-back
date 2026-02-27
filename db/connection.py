@@ -27,9 +27,9 @@ try:
         password=settings.DB_PASSWORD,
         port=settings.DB_PORT
     )
-    print("✅ Pools de conexiones (1 y 2) listos con capacidad de 40 c/u.")
+
 except Exception as e:
-    print(f"❌ Error creando los pools: {e}")
+    print(f" Error creando los pools: {e}")
     pg_pool = None
     pg_pool2 = None
 
