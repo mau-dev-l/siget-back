@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers.geografia import router as geografia_router
 from routers.zonas import router as zonas_router
 from routers.visop_geo import router as visop_router
+from routers.auth_router import router as auth_router
 # Importamos AMBOS pools para cerrarlos correctamente
 from db.connection import pg_pool, pg_pool2 
 
@@ -21,6 +22,7 @@ app.add_middleware(
 app.include_router(geografia_router)
 app.include_router(zonas_router)
 app.include_router(visop_router) 
+app.include_router(auth_router)
 
 @app.on_event("startup")
 def startup():
