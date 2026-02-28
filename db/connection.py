@@ -1,4 +1,4 @@
-import psycopg2
+import psycopg2 #pip install psycopg2-binary
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from core.config import settings

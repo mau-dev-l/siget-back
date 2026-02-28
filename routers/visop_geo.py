@@ -32,7 +32,7 @@ def get_estadisticas():
             
         return resultados
     except Exception as e:
-        print(f"❌ Error crítico en estadísticas: {e}")
+        print(f"Error crítico en estadísticas: {e}")
         return {"anio_2025": [], "anio_2024": [], "anio_2023": []}
 
 @router.post("/obras/crear")
@@ -58,5 +58,5 @@ def crear_obra(obra: ObraNueva):
         nuevo_id = execute_write_query(sql, params, use_pool2=True)
         return {"status": "ok", "id": nuevo_id, "mensaje": "Obra registrada correctamente"}
     except Exception as e:
-        print(f"❌ Error al insertar obra: {e}")
+        print(f"Error al insertar obra: {e}")
         raise HTTPException(status_code=500, detail="Error interno al guardar la obra")

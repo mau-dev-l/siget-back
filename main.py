@@ -5,6 +5,7 @@ from routers.geografia import router as geografia_router
 from routers.zonas import router as zonas_router
 from routers.visop_geo import router as visop_router
 from routers.auth_router import router as auth_router
+from routers.comment_router import router as comment_router
 # Importamos AMBOS pools para cerrarlos correctamente
 from db.connection import pg_pool, pg_pool2 
 
@@ -23,12 +24,13 @@ app.include_router(geografia_router)
 app.include_router(zonas_router)
 app.include_router(visop_router) 
 app.include_router(auth_router)
+app.include_router(comment_router)
 
 @app.on_event("startup")
 def startup():
     # Verificamos que ambos pools estén activos
     if pg_pool and pg_pool2: 
-        print("🚀 Servidor OVIE iniciado correctamente con doble Pool de conexiones")
+        print("Servidor OVIE iniciado correctamente con doble Pool de conexiones")
 
 @app.on_event("shutdown")
 def shutdown():
@@ -40,7 +42,7 @@ def shutdown():
         pg_pool.closeall()
     if pg_pool2:
         pg_pool2.closeall()
-    print("🔒 Conexiones de ambas bases de datos cerradas exitosamente")
+    print("Conexiones de ambas bases de datos cerradas exitosamente")
 
 @app.get("/")
 def read_root():

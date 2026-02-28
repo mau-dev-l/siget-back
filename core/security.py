@@ -1,10 +1,10 @@
-from passlib.context import CryptContext
-import jwt #pip insta
+from passlib.context import CryptContext #pip install passlib[bcrypt]
+import jwt #pip install PyJWT
 from datetime import datetime, timedelta
 
-SECRET_KEY = "super_secret_key"
+SECRET_KEY = "super_secret_key" #sirver para firmar los tokens, debe ser una cadena larga y segura en producción
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 #1 hora
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

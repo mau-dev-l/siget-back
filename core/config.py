@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict # pip install pydantic-settings
 
 class Settings(BaseSettings):
     # Variables de la primera base de datos
