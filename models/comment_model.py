@@ -11,7 +11,9 @@ def create_comment(feature_id: str, content: str):
     return execute_write_query(query, {
         "feature_id": feature_id,
         "content": content
-    })
+    },
+    use_pool2=True)  # Usamos el segundo pool para comentarios
+
 
 
 def get_comments_by_feature(feature_id: str):
@@ -24,4 +26,4 @@ def get_comments_by_feature(feature_id: str):
 
     return execute_read_query(query, {
         "feature_id": feature_id
-    })
+    }, use_pool2=True)  # Usamos el segundo pool para comentarios
