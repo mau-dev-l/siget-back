@@ -2,20 +2,19 @@ import json
 
 def rows_to_geojson(rows, geom_col="geom"):
     """
-    Transforma filas de RealDictCursor a un estándar GeoJSON FeatureCollection.
+    Transforma filas de SQLAlchemy (Result) a un estándar GeoJSON.
     """
     if not rows:
         return {"type": "FeatureCollection", "features": []}
 
     features = []
     for row in rows:
-        # Convertimos la fila a diccionario para manipularla
-        row_dict = dict(row) 
+        # En SQLAlchemy Async, row suele ser un objeto Row. 
+        # Lo convertimos a dict para mantener tu lógica actual.
+        row_dict = dict(row._mapping) 
         
-        # Procesamiento de la geometría
         if geom_col in row_dict:
             raw_geom = row_dict.pop(geom_col)
-            # Si viene de ST_AsGeoJSON (string), lo convertimos a objeto dict
             if isinstance(raw_geom, str):
                 try:
                     geometry = json.loads(raw_geom)
@@ -30,12 +29,12 @@ def rows_to_geojson(rows, geom_col="geom"):
             "type": "Feature",
             "geometry": geometry,
             "properties": row_dict,
-            # Priorizamos encontrar un ID único para la capa
             "id": row_dict.get("id") or row_dict.get("gid") or row_dict.get("cvegeo")
         })
 
     return {"type": "FeatureCollection", "features": features}
 
+# Esta función solo genera el string de la consulta, se mantiene igual.
 def generar_consulta_geojson(tabla: str, limite: int = None):
     limit_clause = f"LIMIT {limite}" if limite else ""
     return f"""

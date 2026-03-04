@@ -1,97 +1,40 @@
-import psycopg2 #pip install psycopg2-binary
-from psycopg2 import pool
-from psycopg2.extras import RealDictCursor
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy.orm import declarative_base
 from core.config import settings
 
-# --- CONFIGURACIÓN DE LOS POOLS ---
-# Aumentamos la capacidad para soportar múltiples peticiones simultáneas
-try:
-    # Pool 1: Base de datos General (Censo, DENUE, Geografía)
-    pg_pool = psycopg2.pool.ThreadedConnectionPool(
-        minconn=1,
-        maxconn=40,
-        host=settings.DB_HOST,
-        database=settings.DB_NAME,
-        user=settings.DB_USER,
-        password=settings.DB_PASSWORD,
-        port=settings.DB_PORT
-    )
-    
-    # Pool 2: Base de datos VISOP (Obras, Faismun)
-    pg_pool2 = psycopg2.pool.ThreadedConnectionPool(
-        minconn=1,
-        maxconn=40,
-        host=settings.DB_HOST,
-        database=settings.DB_NAME_2,
-        user=settings.DB_USER,
-        password=settings.DB_PASSWORD,
-        port=settings.DB_PORT
-    )
+# 1. Definición de las URLs de conexión (Usando asyncpg)
+# Formato: postgresql+asyncpg://user:pass@host:port/dbname
+DATABASE_URL_1 = f"postgresql+asyncpg://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
+DATABASE_URL_2 = f"postgresql+asyncpg://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME_2}"
 
-except Exception as e:
-    print(f" Error creando los pools: {e}")
-    pg_pool = None
-    pg_pool2 = None
+# 2. Creación de los Engines Asíncronos
+# SQLAlchemy maneja internamente el pooling de conexiones (sustituye a ThreadedConnectionPool)
+engine1 = create_async_engine(DATABASE_URL_1, echo=False, pool_size=5, max_overflow=10)
+engine2 = create_async_engine(DATABASE_URL_2, echo=False, pool_size=5, max_overflow=10)
 
-# --- FUNCIONES DE GESTIÓN DE CONEXIÓN ---
+# 3. Creadores de Sesiones
+AsyncSessionLocal1 = async_sessionmaker(bind=engine1, class_=AsyncSession, expire_on_commit=False)
+AsyncSessionLocal2 = async_sessionmaker(bind=engine2, class_=AsyncSession, expire_on_commit=False)
 
-def get_db_connection(use_pool2: bool = False):
-    """Obtiene una conexión del Pool 1 o del Pool 2 según se requiera."""
-    target_pool = pg_pool2 if use_pool2 else pg_pool
-    if not target_pool:
-        raise Exception(f"Pool {'2 (VISOP)' if use_pool2 else '1 (General)'} no está inicializado.")
-    return target_pool.getconn()
+Base = declarative_base()
 
-def release_db_connection(conn, use_pool2: bool = False):
-    """Devuelve la conexión al pool correspondiente."""
-    target_pool = pg_pool2 if use_pool2 else pg_pool
-    if target_pool and conn:
-        target_pool.putconn(conn)
+# --- NUEVAS FUNCIONES DE GESTIÓN (Dependencias para FastAPI) ---
 
-# --- FUNCIONES DE EJECUCIÓN (READ/WRITE) ---
+async def get_db():
+    """Dependencia para la Base de Datos General (Pool 1)"""
+    async with AsyncSessionLocal1() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
-def execute_read_query(query: str, params: dict = None, use_pool2: bool = False):
-    """Ejecuta un SELECT y devuelve una lista de diccionarios."""
-    conn = get_db_connection(use_pool2)
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-            cursor.execute(query, params or {})
-            return cursor.fetchall()
-    except Exception as e:
-        print(f"Error SQL (Lectura): {e}")
-        return []
-    finally:
-        release_db_connection(conn, use_pool2)
+async def get_db_visop():
+    """Dependencia para la Base de Datos VISOP (Pool 2)"""
+    async with AsyncSessionLocal2() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
 
-def execute_read_one(query: str, params: dict = None, use_pool2: bool = False):
-    """Ejecuta un SELECT y devuelve un solo resultado."""
-    conn = get_db_connection(use_pool2)
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-            cursor.execute(query, params or {})
-            return cursor.fetchone()
-    except Exception as e:
-        print(f"Error SQL (Lectura Uno): {e}")
-        return None
-    finally:
-        release_db_connection(conn, use_pool2)
-
-def execute_write_query(query: str, params: dict = None, use_pool2: bool = False):
-    """Ejecuta INSERT, UPDATE o DELETE y maneja la transacción."""
-    conn = get_db_connection(use_pool2)
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(query, params or {})
-            # Si la consulta tiene RETURNING id, obtenemos el valor
-            try:
-                result = cursor.fetchone()[0] if cursor.description else cursor.rowcount
-            except:
-                result = cursor.rowcount
-            conn.commit()
-            return result
-    except Exception as e:
-        conn.rollback()
-        print(f"Error SQL (Escritura): {e}")
-        raise e
-    finally:
-        release_db_connection(conn, use_pool2)
+# Nota: Las funciones execute_read_query y execute_write_query se vuelven obsoletas.
+# Ahora la lógica de ejecución se mueve a los archivos en /services/ usando la sesión inyectada.

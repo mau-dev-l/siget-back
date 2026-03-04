@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-# Importamos los routers con alias para evitar colisiones
+# Importamos los routers (ya convertidos a async)
 from routers.geografia import router as geografia_router
 from routers.zonas import router as zonas_router
 from routers.visop_geo import router as visop_router
 from routers.auth_router import router as auth_router
 from routers.comment_router import router as comment_router
-# Importamos AMBOS pools para cerrarlos correctamente
-from db.connection import pg_pool, pg_pool2 
+# Importamos los engines para monitorear el inicio
+from db.connection import engine1, engine2 
 
 app = FastAPI(title="API OVIE Tuxtla 2026", root_path="/api")
 
@@ -27,23 +27,21 @@ app.include_router(auth_router)
 app.include_router(comment_router)
 
 @app.on_event("startup")
-def startup():
-    # Verificamos que ambos pools estén activos
-    if pg_pool and pg_pool2: 
-        print("Servidor OVIE iniciado correctamente con doble Pool de conexiones")
+async def startup():
+    # En SQLAlchemy Async, los engines se inicializan al primer uso, 
+    # pero podemos verificar la configuración aquí.
+    print("Servidor OVIE 2026 iniciado en modo ASYNC con SQLAlchemy + asyncpg")
 
 @app.on_event("shutdown")
-def shutdown():
+async def shutdown():
     """
-    IMPORTANTE: Cerramos ambos pools al apagar el servicio para liberar 
-    recursos en el servidor de base de datos.
+    Cerramos los engines asíncronos para asegurar que no queden 
+    conexiones colgadas en PostgreSQL.
     """
-    if pg_pool:
-        pg_pool.closeall()
-    if pg_pool2:
-        pg_pool2.closeall()
-    print("Conexiones de ambas bases de datos cerradas exitosamente")
+    await engine1.dispose()
+    await engine2.dispose()
+    print("Motores de base de datos General y VISOP cerrados correctamente")
 
 @app.get("/")
-def read_root():
-    return {"message": "Bienvenido a la API OVIE Tuxtla 2026"}
+async def read_root():
+    return {"message": "Bienvenido a la API OVIE Tuxtla 2026 (Versión Asíncrona)"}

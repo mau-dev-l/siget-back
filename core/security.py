@@ -1,4 +1,4 @@
-from passlib.context import CryptContext #pip install passlib[bcrypt]
+from passlib.context import CryptContext #pip install passlib[bcrypt] 
 import jwt #pip install PyJWT
 from datetime import datetime, timedelta
 

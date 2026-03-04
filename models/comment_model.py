@@ -1,29 +1,34 @@
-from db.connection import execute_write_query, execute_read_query
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-
-def create_comment(feature_id: str, content: str):
-    query = """
+async def create_comment(db: AsyncSession, feature_id: str, content: str):
+    # Cambiamos la sintaxis de %(var)s a :var (estándar de SQLAlchemy)
+    query = text("""
         INSERT INTO comments (feature_id, content)
-        VALUES (%(feature_id)s, %(content)s)
+        VALUES (:feature_id, :content)
         RETURNING id;
-    """
+    """)
 
-    return execute_write_query(query, {
+    result = await db.execute(query, {
         "feature_id": feature_id,
         "content": content
-    },
-    use_pool2=True)  # Usamos el segundo pool para comentarios
+    })
+    
+    # Confirmamos los cambios en la DB
+    await db.commit()
+    
+    # Obtenemos el ID retornado
+    return result.scalar()
 
-
-
-def get_comments_by_feature(feature_id: str):
-    query = """
+async def get_comments_by_feature(db: AsyncSession, feature_id: str):
+    query = text("""
         SELECT id, content, created_at
         FROM comments
-        WHERE feature_id = %(feature_id)s
+        WHERE feature_id = :feature_id
         ORDER BY created_at DESC;
-    """
+    """)
 
-    return execute_read_query(query, {
-        "feature_id": feature_id
-    }, use_pool2=True)  # Usamos el segundo pool para comentarios
+    result = await db.execute(query, {"feature_id": feature_id})
+    
+    # .mappings().all() emula el comportamiento de RealDictCursor (lista de dicts)
+    return result.mappings().all()

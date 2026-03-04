@@ -11,3 +11,16 @@ class ObraNueva(BaseModel):
     nombre_obra: str
     num_aprobacion: str
     geometry: Dict[str, Any]
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+
+class CommentCreate(BaseModel):
+    feature_id: str
+    content: str

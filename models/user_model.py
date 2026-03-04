@@ -1,10 +1,15 @@
-from db.connection import execute_read_one
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-def get_user_by_username(username: str):
-    query = """
+async def get_user_by_username(db: AsyncSession, username: str):
+    query = text("""
         SELECT id, username, password, role
         FROM users
-        WHERE username = %(username)s
+        WHERE username = :username
         LIMIT 1
-    """
-    return execute_read_one(query, {"username": username}, use_pool2=True)
+    """)
+    
+    result = await db.execute(query, {"username": username})
+    
+    # .mappings().first() devuelve un diccionario o None si no existe
+    return result.mappings().first()

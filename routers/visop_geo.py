@@ -1,16 +1,17 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 import json
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from db.connection import get_db_visop  # Conexión a la base VISOP
 from schemas.zonas import ObraNueva
-from db.connection import execute_read_query, execute_write_query
 
 router = APIRouter(prefix="/visop", tags=["Capas Geográficas"])
 
 @router.get("/estadisticas/obras")
-def get_estadisticas():
+async def get_estadisticas(db: AsyncSession = Depends(get_db_visop)):
     """
-    Obtiene el conteo de obras agrupadas por tipo para los años 2023, 2024 y 2025.
+    Obtiene el conteo de obras agrupadas por tipo para los años 2023, 2024 y 2025 de forma asíncrona.
     """
-    # 1. Definimos las consultas con alias claros para evitar el KeyError
     queries = {
         "anio_2025": 'SELECT tipo_proy AS label, COUNT(*) AS total FROM faismun_2025 GROUP BY tipo_proy ORDER BY total DESC;',
         "anio_2024": 'SELECT tipo AS label, COUNT(*) AS total FROM faismun_2024_geo GROUP BY tipo ORDER BY total DESC;',
@@ -21,10 +22,11 @@ def get_estadisticas():
     
     try:
         for anio, sql in queries.items():
-            # 2. IMPORTANTE: use_pool2=True indica que use la base de datos de VISOP
-            rows = execute_read_query(sql, use_pool2=True)
+            # Ejecución asíncrona de cada consulta
+            result = await db.execute(text(sql))
+            rows = result.mappings().all()
             
-            # 3. Acceso por nombre de columna (soluciona el KeyError: 0)
+            # Mapeo de resultados compatible con tu lógica anterior
             resultados[anio] = [
                 {"label": r["label"] or "Sin Clasificar", "value": r["total"]} 
                 for r in rows
@@ -36,15 +38,16 @@ def get_estadisticas():
         return {"anio_2025": [], "anio_2024": [], "anio_2023": []}
 
 @router.post("/obras/crear")
-def crear_obra(obra: ObraNueva):
+async def crear_obra(obra: ObraNueva, db: AsyncSession = Depends(get_db_visop)):
     """
-    Registra una nueva obra en la base de datos de VISOP (Pool 2).
+    Registra una nueva obra en la base de datos de VISOP usando SQLAlchemy Async.
     """
-    sql = """
-    INSERT INTO faismun_2024_geo (obra_accio, no_aprobac, colonia, geom)
-    VALUES (%(nombre)s, %(num)s, %(col)s, ST_SetSRID(ST_GeomFromGeoJSON(%(geom)s), 4326))
-    RETURNING id;
-    """
+    # Cambiamos placeholders %(nombre)s por :nombre
+    sql = text("""
+        INSERT INTO faismun_2024_geo (obra_accio, no_aprobac, colonia, geom)
+        VALUES (:nombre, :num, :col, ST_SetSRID(ST_GeomFromGeoJSON(:geom), 4326))
+        RETURNING id;
+    """)
     
     params = {
         "nombre": obra.nombre_obra,
@@ -54,9 +57,16 @@ def crear_obra(obra: ObraNueva):
     }
     
     try:
-        # execute_write_query maneja el commit y la liberación al pool 2
-        nuevo_id = execute_write_query(sql, params, use_pool2=True)
+        # Ejecución y obtención del ID retornado
+        result = await db.execute(sql, params)
+        nuevo_id = result.scalar()
+        
+        # IMPORTANTE: En SQLAlchemy Async debemos hacer commit explícito
+        await db.commit()
+        
         return {"status": "ok", "id": nuevo_id, "mensaje": "Obra registrada correctamente"}
     except Exception as e:
+        # En caso de error, hacemos rollback para limpiar la transacción
+        await db.rollback()
         print(f"Error al insertar obra: {e}")
         raise HTTPException(status_code=500, detail="Error interno al guardar la obra")

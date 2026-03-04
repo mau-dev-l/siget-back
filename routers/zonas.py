@@ -1,53 +1,72 @@
 import json
-from fastapi import APIRouter
-from db.connection import execute_read_query, execute_write_query
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+from db.connection import get_db  # Usamos la base de datos General (Pool 1)
 from schemas.zonas import ZonaCreate
 from services.geo_utils import rows_to_geojson
 
 router = APIRouter(prefix="/zonas", tags=["Zonas Personalizadas"])
 
 @router.get("/capa-referencia-centralidades/")
-def get_capa_referencia(clave: str = None):
+async def get_capa_referencia(clave: str = None, db: AsyncSession = Depends(get_db)):
     """
-    Obtiene la geometría de una centralidad barrial para usarla como referencia
-    al dibujar una zona personalizada.
+    Obtiene la geometría de una centralidad barrial de forma asíncrona.
     """
     if not clave:
         return {"type": "FeatureCollection", "features": []}
         
-    # Usamos comillas dobles para la columna "CLAVE_2" en PostgreSQL
-    query = """
+    # Cambiamos %(c)s por :c y usamos text()
+    query = text("""
         SELECT "CLAVE_2", ST_AsGeoJSON(geom) as geom 
         FROM centralidad_barrial02 
-        WHERE "CLAVE_2" = %(c)s
-    """
-    # use_pool2=False (por defecto) asegura que use la base de datos General
-    rows = execute_read_query(query, {"c": clave}, use_pool2=False)
-    return rows_to_geojson(rows)
+        WHERE "CLAVE_2" = :c
+    """)
+    
+    try:
+        result = await db.execute(query, {"c": clave})
+        rows = result.mappings().all()
+        return rows_to_geojson(rows)
+    except Exception as e:
+        print(f"Error al obtener capa de referencia: {e}")
+        return {"type": "FeatureCollection", "features": [], "error": str(e)}
 
 @router.post("/mis_zonas/")
-def guardar_zona(zona: ZonaCreate):
+async def guardar_zona(zona: ZonaCreate, db: AsyncSession = Depends(get_db)):
     """
-    Guarda una nueva zona dibujada por el usuario en la base de datos.
+    Guarda una nueva zona dibujada por el usuario usando SQLAlchemy Async.
     """
     geom_json = json.dumps(zona.geom)
     
-    # ST_GeomFromGeoJSON convierte el JSON del frontend a geometría de PostGIS
-    query = """
+    # Cambiamos placeholders a formato :name
+    query = text("""
         INSERT INTO mis_zonas (nombre, geom) 
-        VALUES (%(nombre)s, ST_SetSRID(ST_GeomFromGeoJSON(%(geom)s), 4326)) 
+        VALUES (:nombre, ST_SetSRID(ST_GeomFromGeoJSON(:geom), 4326)) 
         RETURNING id
-    """
+    """)
     
     params = {
         "nombre": zona.nombre, 
         "geom": geom_json
     }
     
-    # execute_write_query gestiona el commit() y libera la conexión al Pool 1
-    id_nueva = execute_write_query(query, params, use_pool2=False)
-    
-    return {
-        "mensaje": "Zona guardada exitosamente", 
-        "id": id_nueva
-    }
+    try:
+        # Ejecutamos la inserción
+        result = await db.execute(query, params)
+        id_nueva = result.scalar()
+        
+        # IMPORTANTE: Confirmar la transacción en la base de datos General
+        await db.commit()
+        
+        return {
+            "mensaje": "Zona guardada exitosamente", 
+            "id": id_nueva
+        }
+    except Exception as e:
+        # Revertimos en caso de error para mantener la integridad
+        await db.rollback()
+        print(f"Error al guardar zona personalizada: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail="Error interno al guardar la zona personalizada"
+        )
