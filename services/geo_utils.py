@@ -2,21 +2,22 @@ import json
 
 def rows_to_geojson(rows, geom_col="geom"):
     """
-    Transforma filas de SQLAlchemy (Result) a un estándar GeoJSON.
+    Transforma filas de SQLAlchemy (Mappings) a un estándar GeoJSON.
     """
     if not rows:
         return {"type": "FeatureCollection", "features": []}
 
     features = []
     for row in rows:
-        # En SQLAlchemy Async, row suele ser un objeto Row. 
-        # Lo convertimos a dict para mantener tu lógica actual.
-        row_dict = dict(row._mapping) 
+        # CORRECCIÓN: 'row' ya es un mapeo por el uso de result.mappings()
+        # Creamos una copia para poder extraer la geometría sin afectar el original
+        row_dict = dict(row) 
         
         if geom_col in row_dict:
             raw_geom = row_dict.pop(geom_col)
             if isinstance(raw_geom, str):
                 try:
+                    # Parseamos el string JSON que devuelve ST_AsGeoJSON
                     geometry = json.loads(raw_geom)
                 except:
                     geometry = None
@@ -34,8 +35,8 @@ def rows_to_geojson(rows, geom_col="geom"):
 
     return {"type": "FeatureCollection", "features": features}
 
-# Esta función solo genera el string de la consulta, se mantiene igual.
 def generar_consulta_geojson(tabla: str, limite: int = None):
+    # Esta función se mantiene igual ya que solo genera el SQL string
     limit_clause = f"LIMIT {limite}" if limite else ""
     return f"""
     SELECT json_build_object(
